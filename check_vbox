@@ -1,0 +1,172 @@
+#!/bin/sh
+#
+#
+# check_vbox : Nagios Plugin for VirtualBox
+#
+# compatible wiht Ve3rsion 3.0
+#
+# Copyright (c) 2006-2009, linCK-IT GmbH & Co. KG, http://linck-it.de
+# Author: Stefan Lechner sl@linck-it.de
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+
+
+
+#-----------------------------------
+
+
+##VARS
+USER=
+VMS=""
+VERBOSE="0"
+LONG="0"
+STAT=0
+VMSEPERATOR=,
+VERSION="0.2 - Alpha"
+
+
+
+#-----------------------------------
+#VirtualBox Path
+#VBoxManage
+VBM=/usr/bin/VBoxManage
+#VBoxHeadless
+VBH=/usr/bin/VBoxHeadless
+
+#System Path
+SUDO=/usr/bin/sudo
+GREP=/bin/grep
+WHOAMI=$('/usr/bin/whoami')
+TR=/usr/bin/tr
+#----------------------------------
+Usage()
+{
+	echo "VirtualBox Nagios Plugin -- by linCK-IT GmbH & Co KG"
+	echo "Use:" `basename $0` 
+	echo " "	
+	echo "    [--user|-u]    Userame wich VBoxes are registered"  
+	echo "                   maybe vou have to edit the sudoer list (visudo)"
+	echo "                   for example add this line:"
+	echo "                   nagios  ALL=($USER) NOPASSWD: $VBM"
+	echo "                     nagios = Nagios User"
+	echo "                     $USER = VirtualBox User"
+	echo " "
+	echo "    [--vm|-V]      Virtual Machine Names"
+	echo "                   (use with multiple -V or $VMSEPERATOR seperatet)"
+	echo " "
+	echo "    [--long|-l]    Long Output"
+	echo "    [--verbose|-v] Verbose Output"
+	echo "    [--help|-h]    Print this Help"
+	echo 
+	echo "Version: $VERSION"
+}
+USER=$WHOAMI
+TEMP=$#
+while [ $TEMP -gt 0 ] ;
+do
+	case "$1" in
+		--user|-u)
+			shift
+			USER="$1"
+		;;
+		--vm|-V)
+			shift
+			VMS="$1$VMSEPERATOR$VMS"
+		;;
+		--long|-l)
+			LONG="1"
+		;;	
+		--verbose|-v)
+			VERBOSE="1"
+		;;
+		--help|-h)
+			Usage
+			exit 0
+		;;
+		*)
+			echo
+			echo "--Invalid Option \"$1\""
+			echo
+			Usage
+			exit 3
+		;;
+	esac
+	shift
+	TEMP=$#
+done
+
+if [ "$USER" != "$WHOAMI" ]; then
+        VBM="$SUDO -u $USER $VBM"
+        #VBH="$SUDO -E -u $USER $VBH"
+fi
+
+if [ "$VMS" == "" ] ; then 
+	NAMES=$($VBM list -l vms|$GREP -e Name|cut -d : -f 2|sed 's/^ *//g'|tr '\n' $VMSEPERATOR)
+	if [ "$NAMES" == "" ]; then 
+		echo "ERROR: No Virtual Machine registered for User $USER"
+		exit 2
+	fi
+else
+	NAMES=$VMS
+fi
+
+if [ $VERBOSE = 1 ]; then echo "User=     $USER !Machines= $NAMES"| tr "!" "\n"; fi
+IFS=$VMSEPERATOR
+for i in $NAMES
+do
+	unset IFS
+	if [ $VERBOSE = 2 ]; then $VBM showvminfo "$i"; fi
+	OUT=$($VBM showvminfo "$i"|$GREP -e State -e ERROR)
+	if [ "`echo $OUT| cut -d : -f1`" == "ERROR" ]; then 
+		NOUT=`echo $OUT|$TR -d "ERROR:"`
+		ERRORLIST="$ERRORLIST $NOUT"
+	fi
+	STATE=$(echo $OUT|cut -d" " -f2)
+       	if [ $LONG = 1 ]; then EXTINFO=[$($VBM showvminfo "$i"|$GREP -e State|cut -d" " -f12-99|cut -d. -f1)\)]; fi
+	if [ "$STATE" == "" ]; then 
+		ERRORLIST=$ERRORLIST No Machine State for $i found
+	fi
+	case "$STATE" in
+		running)
+			OKLIST="$OKLIST $i$EXTINFO"
+		;;
+	
+		powered)
+			ERRORLIST="$ERRORLIST $i$EXTINFO"
+		;;
+
+		paused)
+			PAUSELIST="$PAUSELIST $i$EXTINFO"
+		;;
+	esac
+	IFS=$VMSEPERATOR
+done
+unset IFS
+
+#echo ERR:$ERRORLIST PAUS:$PAUSELIST OK:$OKLIST
+if [ "$ERRORLIST" != "" ]; then
+	LIST="ERROR: $ERRORLIST"
+	STAT=2
+fi
+if [ "$PAUSELIST" != "" ]; then
+	LIST="$LIST  PAUSED: $PAUSELIST"
+	if [ $STAT != 2 ]; then STAT=1; fi
+fi
+if [ "$OKLIST" != "" ]; then
+	LIST="$LIST OK: $OKLIST"
+	if [ $STAT = "" ]; then STAT=0; fi
+fi
+echo $LIST
+exit $STAT
