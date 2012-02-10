@@ -41,15 +41,15 @@ VERSION="0.2 - Alpha"
 #-----------------------------------
 #VirtualBox Path
 #VBoxManage
-VBM=/usr/bin/VBoxManage
+VBM=/usr/local/bin/VBoxManage
 #VBoxHeadless
-VBH=/usr/bin/VBoxHeadless
+VBH=/usr/local/bin/VBoxHeadless
 
 #System Path
-SUDO=/usr/bin/sudo
-GREP=/bin/grep
+SUDO=/usr/local/bin/sudo
+GREP=grep
 WHOAMI=$('/usr/bin/whoami')
-TR=/usr/bin/tr
+TR=tr
 #----------------------------------
 Usage()
 {
@@ -112,9 +112,9 @@ if [ "$USER" != "$WHOAMI" ]; then
         #VBH="$SUDO -E -u $USER $VBH"
 fi
 
-if [ "$VMS" == "" ] ; then 
+if [ "$VMS" = "" ] ; then 
 	NAMES=$($VBM list -l vms|$GREP -e Name|cut -d : -f 2|sed 's/^ *//g'|tr '\n' $VMSEPERATOR)
-	if [ "$NAMES" == "" ]; then 
+	if [ "$NAMES" = "" ]; then 
 		echo "ERROR: No Virtual Machine registered for User $USER"
 		exit 2
 	fi
@@ -129,13 +129,13 @@ do
 	unset IFS
 	if [ $VERBOSE = 2 ]; then $VBM showvminfo "$i"; fi
 	OUT=$($VBM showvminfo "$i"|$GREP -e State -e ERROR)
-	if [ "`echo $OUT| cut -d : -f1`" == "ERROR" ]; then 
+	if [ "`echo $OUT| cut -d : -f1`" = "ERROR" ]; then 
 		NOUT=`echo $OUT|$TR -d "ERROR:"`
 		ERRORLIST="$ERRORLIST $NOUT"
 	fi
 	STATE=$(echo $OUT|cut -d" " -f2)
        	if [ $LONG = 1 ]; then EXTINFO=[$($VBM showvminfo "$i"|$GREP -e State|cut -d" " -f12-99|cut -d. -f1)\)]; fi
-	if [ "$STATE" == "" ]; then 
+	if [ "$STATE" = "" ]; then 
 		ERRORLIST=$ERRORLIST No Machine State for $i found
 	fi
 	case "$STATE" in
